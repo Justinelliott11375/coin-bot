@@ -2,31 +2,51 @@ import cbpro
 import sqlite3
 import datetime
 import time
+from class_coin import Coin
 
 # init cbpro client
 public_client = cbpro.PublicClient()
 
 # init db connection and cursor
 conn = sqlite3.connect('database.db')
-cursor = conn.cursor()
+c = conn.cursor()
 
-# get xlm price in usd
-ticker = public_client.get_product_ticker('XLM-USD')
+# dict to store coin classes
+coins = {}
 
-# get current time
-current_time_stamp = round(time.time() * 1000)
-current_time_readable = datetime.datetime.now().strftime('%H:%M:%S %Y-%m-%d')
+# list of coins to use
+coin_names = ['XLM-USD', 'BTC-USD']
 
-# add current price and time to db
-cursor.execute('''UPDATE sample_rsi 
-                SET price = ?, time = ?, timestamp = ?  
-                WHERE timestamp = (SELECT MIN(timestamp) FROM sample_rsi)''',
-               [ticker['price'], current_time_readable, current_time_stamp])
+# create Coin class for each coin in list
+for name in coin_names:
+    coins[name] = Coin(name)
+
+# loop to add current coin prices to db
+for coin in coins.values():
+    # get current time
+    current_time_stamp = round(time.time() * 1000)
+    current_time_readable = datetime.datetime.now().strftime('%H:%M:%S %Y-%m-%d')
+
+    # check if db has 15 previous prices already stored
+    c.execute(
+        "SELECT COUNT(*) FROM sample_rsi WHERE coin = ?",
+        [coin.name])
+    previous_entries = c.fetchall()[0][0]
+
+    if(previous_entries == 15):
+        # add current price and time to db
+        c.execute('''UPDATE sample_rsi
+                        SET coin = ?, price = ?, time = ?, timestamp = ?
+                        WHERE timestamp = (SELECT MIN(timestamp) FROM sample_rsi)''',
+                  [coin.name, coin.price, current_time_readable, current_time_stamp])
+    else:
+        c.execute("INSERT INTO sample_rsi VALUES (?, ?, ?, ?)",
+                  [coin.name, coin.price, current_time_readable, current_time_stamp])
 
 
-# Query db to fetch current price and past 14 prices
-cursor.execute("SELECT * FROM sample_rsi ORDER BY timestamp ASC")
-prices = cursor.fetchall()
+# # Query db to fetch current price and past 14 prices
+# c.execute("SELECT * FROM sample_rsi ORDER BY timestamp ASC")
+# prices = c.fetchall()
 
 
 # def calculate_rsi(priceTuple):
@@ -54,7 +74,7 @@ prices = cursor.fetchall()
 
 # calculate_rsi(prices)
 
-print(ticker)
+#  print(ticker)
 
 conn.commit()
 conn.close()
